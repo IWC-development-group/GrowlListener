@@ -74,6 +74,9 @@ int main()
 	std::cout << "Sent " << bytesSend << " bytes to server\n";
 
 	std::vector<char> serverBuffer(BUFFER_SIZE);
+	std::vector<char> audioData;
+	audioData.reserve(BUFFER_SIZE * 2);
+
 	std::string headers;
 
 	bool endOfHeaders = false;
@@ -81,7 +84,7 @@ int main()
 
 	while (!endOfHeaders) {
 		short packetSize;
-		packetSize = recv(clientSock, serverBuffer.data() + bytesInBuffer, serverBuffer.size(), NULL);
+		packetSize = recv(clientSock, serverBuffer.data() + bytesInBuffer, serverBuffer.size() - bytesInBuffer, NULL);
 		std::cout << "Received " << packetSize << " bytes from server\n";
 		if (packetSize <= 0) { break; }
 		bytesInBuffer += packetSize;
@@ -91,11 +94,38 @@ int main()
 		size_t pos = data.find("\r\n\r\n");
 		if (pos != std::string::npos) {
 			headers = data.substr(0, pos);
+
+			int audioStart = pos + 4;
+			int audioBytes = bytesInBuffer - audioStart;
+
+			if (audioBytes > 0) {
+				audioData.insert(audioData.end(), serverBuffer.data() + audioStart, serverBuffer.data() + bytesInBuffer);
+				std::cout << "Saved " << audioBytes << " audio bytes from initial packet\n";
+			}
+
 			endOfHeaders = true;
 		}
 	}
 
-	std::cout << "Final message: " << headers << "\n";
+	std::cout << "Headers received\n";
+
+	int metaInt = 0;
+	size_t metaPos = headers.find("icy-metaint:");
+	if (metaPos != std::string::npos) {
+		int numPos = metaPos + 12;
+		std::string numStr;
+		while (numPos < headers.size() && std::isdigit(headers[numPos])) {
+			numStr += headers[numPos];
+			++numPos;
+		}
+		metaInt = std::stoi(numStr);
+	}
+	std::cout << "Get icy meta int: " << metaInt << "\n";
+
+	bool readAudio = true;
+	int bytesUntilEnd = metaInt - audioData.size();
+
+	
 
 	closesocket(clientSock);
 	WSACleanup();
